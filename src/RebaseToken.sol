@@ -8,7 +8,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract RebaseToken is ERC20{
 
     error RebaseToken__InterestRateCanOnlyDecrease(uint256 oldInterest, uint256 newInterest);
-    uint256 private s_interestRate = 5e10;
+    uint256 private s_interestRate = 5e10; // 500000000000
     mapping(address => uint256) private s_userInterestRate;
     mapping(address => uint256) private s_userLastUpdatedTimeStamp;
     uint256 private constant PRECISION_FACTOR = 1e18;
@@ -35,6 +35,14 @@ contract RebaseToken is ERC20{
         _mint(_to, _amount);
     }
 
+    function burn(address _from, uint256 _amount) external {
+        if(_amount == type(uint256).max) {
+            _amount = balanceOf(_from);
+        }
+        _mintAccuredInterest(_from);
+        _burn(_from, _amount);
+    }
+
     function balanceOf(address _user) public view override returns (uint256) {
         return super.balanceOf(_user) * calculateUserAccumulatedInterestSinceLastUpdate(_user) / PRECISION_FACTOR;
     }
@@ -46,11 +54,16 @@ contract RebaseToken is ERC20{
 
 
     function _mintAccuredInterest(address _user) internal {
+        uint256 previousPrinicpleBalance = super.balanceOf(_user);
+        uint256 currentBalanace = balanceOf(_user);
+        uint256 balanceIncrease = currentBalanace - previousPrinicpleBalance;
         s_userLastUpdatedTimeStamp[_user] = block.timestamp;
+
+        _mint(_user, balanceIncrease);
     }
 
 
     function getUserInterestRate(address _user) external view returns (uint256) {
-        return userInterestRate[_user];
+        return s_userInterestRate[_user];
     }
 }
