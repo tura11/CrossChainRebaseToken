@@ -94,5 +94,23 @@ contract RebaseTokenTest is Test {
         vm.expectRevert();
         token.mint(user, 1e18);
     }
+
+
+    ////////////////////////////////////////////////
+    ///         TEST BURN                        ///
+    ///////////////////////////////////////////////
+
+
+
+    function testBurn() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+        token.mint(userPerm, 1e18);
+        assertEq(token.balanceOf(userPerm), 1e18);
+        token.burn(userPerm, 1e18);
+        vm.stopPrank();
+        assertEq(token.balanceOf(userPerm), 0);
+    }
  
 }
