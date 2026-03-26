@@ -85,7 +85,7 @@ contract RebaseTokenTest is Test {
 
         assertEq(token.principleBalanceOf(userPerm), expectedPrinciple);
         
-        assertGt(token.balanceOf(userPerm), token.principleBalanceOf(userPerm));
+        assertGt(token.balanceOf(userPerm), token.principleBalanceOf(userPerm)); // greate than because balanceOf includes interest without write to storage
         assertEq(token.getInterestRate(), 5e10);
     }
 
