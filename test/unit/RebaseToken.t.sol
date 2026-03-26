@@ -112,5 +112,107 @@ contract RebaseTokenTest is Test {
         vm.stopPrank();
         assertEq(token.balanceOf(userPerm), 0);
     }
+
+
+   function testBurnAfterInterestAccrued() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+
+        token.mint(userPerm, 4e18);
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 balanceWithInterest = token.balanceOf(userPerm);
+        token.burn(userPerm, 1e18);
+
+        assertEq(token.balanceOf(userPerm), balanceWithInterest - 1e18);
+        vm.stopPrank();
+    }
+
+    function testTwoBurnsWithTimeBetween() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+
+        token.mint(userPerm, 4e18);
+        vm.warp(block.timestamp + 30 days);
+
+        token.burn(userPerm, 1e18);
+        vm.warp(block.timestamp + 30 days); 
+
+        uint256 balanceAfterFirstBurn = token.balanceOf(userPerm);
+        token.burn(userPerm, 1e18);
+
+        assertEq(token.balanceOf(userPerm), balanceAfterFirstBurn - 1e18);
+        vm.stopPrank();
+    }
+
+    function testBurnMaxAmount() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+        token.mint(userPerm, 1000e18);
+        token.burn(userPerm, type(uint256).max);
+        vm.stopPrank();
+        assertEq(token.balanceOf(userPerm), 0);
+    }
+
+    /////////////////////////////////////////////////
+    ///         TEST TRANSFER                     ///
+    ///////////////////////////////////////////////
+
+
+    function testTransferSuccesfuly() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+        token.mint(userPerm, 1e18);
+        token.transfer(user, 1e18);
+        vm.stopPrank();
+        assertEq(token.balanceOf(userPerm), 0);
+        assertEq(token.balanceOf(user), 1e18);
+        assertEq(token.getUserInterestRate(user), 5e10);
+    }
+
+    function testTrasnferWithMaxAmount() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+        token.mint(userPerm, 1000e18);
+        token.transfer(user, type(uint256).max);
+        vm.stopPrank();
+        assertEq(token.balanceOf(userPerm), 0);
+        assertEq(token.balanceOf(user), 1000e18);
+        assertEq(token.getUserInterestRate(user), 5e10);
+    }
+
+    function testTransferFromSuccesfuly() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+        token.approve(owner, 1e18);
+        token.mint(userPerm, 1e18);
+        vm.stopPrank();
+        vm.prank(owner);
+        token.transferFrom(userPerm, user, 1e18);
+        
+        assertEq(token.balanceOf(userPerm), 0);
+        assertEq(token.balanceOf(user), 1e18);
+        assertEq(token.getUserInterestRate(user), 5e10);
+    }
+    function testTransferFromWithMaxAmount() public {
+        vm.prank(owner);
+        token.grantMintAndBurnRole(userPerm);
+        vm.startPrank(userPerm);
+        token.approve(owner, 1000e18);
+        token.mint(userPerm, 1000e18);
+        vm.stopPrank();
+        vm.prank(owner);
+        token.transferFrom(userPerm, user, type(uint256).max);
+        
+        assertEq(token.balanceOf(userPerm), 0);
+        assertEq(token.balanceOf(user), 1000e18);
+        assertEq(token.getUserInterestRate(user), 5e10);
+    }
  
 }
