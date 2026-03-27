@@ -75,7 +75,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
             _amount = balanceOf(_sender);
         }
         if(balanceOf(_recipient) == 0) {
-            s_userInterestRate[_recipient] = s_userInterestRate[_sender];
+            s_userInterestRate[_recipient] = s_userInterestRate[_sender]; // known issue with inheritence interest
         }
         return super.transferFrom(_sender, _recipient, _amount);
     }
