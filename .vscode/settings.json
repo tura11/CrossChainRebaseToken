@@ -1,0 +1,7 @@
+{
+    "solidity.defaultCompiler": "localNodeModule",
+    "solidity.enabledAsYouTypeCompilationErrorCheck": true,
+      "solidity.remappings": [
+    "@openzeppelin/=lib/openzeppelin-contracts/"
+  ]
+}

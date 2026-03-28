@@ -3,13 +3,18 @@
 
 pragma solidity ^0.8.24;
 
+import {IRebaseToken} from "./interfaces/IRebaseToken.sol";
+
 contract Vault {
-    address private immutable i_rebaseToken;
+    error Vault__TransferFailed();
 
-    event Deposited(address user, uint256 amount);
+    IRebaseToken private immutable i_rebaseToken;
+
+    event Deposited(address indexed user, uint256 amount);
+    event Reedemed(address indexed user, uint256 amount);
 
 
-    constructor(address _rebaseToken) {
+    constructor(IRebaseToken _rebaseToken) {
         i_rebaseToken = _rebaseToken;
     }
 
@@ -21,8 +26,18 @@ contract Vault {
     }
 
 
+    function redeem(uint256 _amount) external {
+        i_rebaseToken.burn(msg.sender, _amount);
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
+        if(!success) {
+            revert Vault__TransferFailed();
+        }
+        emit Reedemed(msg.sender, _amount);
+    }
+
+
     function getRebaseTokenAddress() public view returns (address) {
-        return i_rebaseToken;
+        return address(i_rebaseToken);
     }
 
     receive() external payable {}
