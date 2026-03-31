@@ -25,9 +25,10 @@ contract RebaseTokenInvariant is StdInvariant, Test {
 
         handler = new Handler(address(token), address(vault));
 
-        bytes4[] memory selectors = new bytes4[](2);
+        bytes4[] memory selectors = new bytes4[](3);
         selectors[0] = Handler.deposit.selector;
         selectors[1] = Handler.redeem.selector;
+        selectors[2] = Handler.warp.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -36,5 +37,12 @@ contract RebaseTokenInvariant is StdInvariant, Test {
         uint256 totalMinted = handler.totalMinted();
         uint256 totalBurned = handler.totalBurned();
         assertGe(token.totalSupply(), totalMinted - totalBurned);
+    }
+
+    function invariant_BalanceOfGtePripicpleBalance() public view {
+        address actor1 = handler.actors(0);
+        address actor2 = handler.actors(1);
+        assertGe(token.balanceOf(actor1), token.principleBalanceOf(actor1));
+        assertGe(token.balanceOf(actor2), token.principleBalanceOf(actor2));
     }
 }
