@@ -13,7 +13,7 @@ contract Handler is Test {
     Vault vault;
     uint256 public totalMinted;
     uint256 public totalBurned;
-    address[] actors = new address[](3);
+    address[] public actors = new address[](3);
 
 
     constructor(address _token, address _vault) {
@@ -43,5 +43,10 @@ contract Handler is Test {
         vm.prank(actor);
         vault.redeem(amount);
         totalBurned += amount;
+    }
+
+    function warp(uint256 time) public {
+        time = bound(time, 0, 30 days);
+        vm.warp(block.timestamp + time);
     }
 }
