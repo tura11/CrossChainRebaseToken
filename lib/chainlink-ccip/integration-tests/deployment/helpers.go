@@ -1,0 +1,442 @@
+package deployment
+
+import (
+	"math"
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/Masterminds/semver/v3"
+	"github.com/aws/smithy-go/ptr"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/gagliardetto/solana-go"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	cldf_deployment "github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	"github.com/stretchr/testify/require"
+
+	evmrouterops "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_2_0/operations/router"
+	evmofframpops "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/offramp"
+	evmonrampops "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_0/operations/onramp"
+	fq163ops "github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/v1_6_3/operations/fee_quoter"
+	"github.com/smartcontractkit/chainlink-ccip/chains/solana/deployment/utils"
+	fqops "github.com/smartcontractkit/chainlink-ccip/chains/solana/deployment/v1_6_0/operations/fee_quoter"
+	offrampops "github.com/smartcontractkit/chainlink-ccip/chains/solana/deployment/v1_6_0/operations/offramp"
+	rmnremoteops "github.com/smartcontractkit/chainlink-ccip/chains/solana/deployment/v1_6_0/operations/rmn_remote"
+	routerops "github.com/smartcontractkit/chainlink-ccip/chains/solana/deployment/v1_6_0/operations/router"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/deploy"
+	mcmsapi "github.com/smartcontractkit/chainlink-ccip/deployment/deploy"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/testhelpers"
+	common_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/mcms"
+
+	mcms_types "github.com/smartcontractkit/mcms/types"
+
+	mcmsreaderapi "github.com/smartcontractkit/chainlink-ccip/deployment/utils/changesets"
+	datastore_utils "github.com/smartcontractkit/chainlink-ccip/deployment/utils/datastore"
+)
+
+func DeployMCMS(t *testing.T, e *cldf_deployment.Environment, selector uint64, qualifiers []string) {
+	// For EVM only, set the timelock admin
+	var timelockAdmin common.Address
+	chain1, ok := e.BlockChains.EVMChains()[selector]
+	if ok {
+		timelockAdmin = chain1.DeployerKey.From
+	}
+	dReg := mcmsapi.GetRegistry()
+	version := semver.MustParse("1.6.0")
+	cs := mcmsapi.DeployMCMS(dReg, nil)
+	fcs := mcmsapi.FinalizeDeployMCMS(dReg, nil)
+	for _, qualifier := range qualifiers {
+		output, err := cs.Apply(*e, mcmsapi.MCMSDeploymentConfig{
+			AdapterVersion: version,
+			Chains: map[uint64]mcmsapi.MCMSDeploymentConfigPerChain{
+				selector: {
+					Canceller:        testhelpers.SingleGroupMCMS(),
+					Bypasser:         testhelpers.SingleGroupMCMS(),
+					Proposer:         testhelpers.SingleGroupMCMS(),
+					TimelockMinDelay: big.NewInt(0),
+					Qualifier:        ptr.String(qualifier),
+					TimelockAdmin:    timelockAdmin,
+				},
+			},
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(output.Reports), 0)
+		require.NoError(t, output.DataStore.Merge(e.DataStore))
+		e.DataStore = output.DataStore.Seal()
+		finalizeOutput, err := fcs.Apply(*e, mcmsapi.MCMSDeploymentConfig{
+			AdapterVersion: version,
+			Chains: map[uint64]mcmsapi.MCMSDeploymentConfigPerChain{
+				selector: {
+					Canceller:        testhelpers.SingleGroupMCMS(),
+					Bypasser:         testhelpers.SingleGroupMCMS(),
+					Proposer:         testhelpers.SingleGroupMCMS(),
+					TimelockMinDelay: big.NewInt(0),
+					Qualifier:        ptr.String(qualifier),
+					TimelockAdmin:    timelockAdmin,
+				},
+			},
+		})
+		require.NoError(t, err)
+		require.Greater(t, len(finalizeOutput.Reports), 0)
+		require.NoError(t, finalizeOutput.DataStore.Merge(e.DataStore))
+		e.DataStore = finalizeOutput.DataStore.Seal()
+	}
+}
+
+func SolanaTransferOwnership(t *testing.T, e *cldf_deployment.Environment, selector uint64) {
+	chain := e.BlockChains.SolanaChains()[selector]
+	timelockSigner := utils.GetTimelockSignerPDA(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		common_utils.CLLQualifier)
+	mcmSigner := utils.GetMCMSignerPDA(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		common_utils.ProposerManyChainMultisig,
+		common_utils.CLLQualifier,
+	)
+	err := utils.FundSolanaAccounts(
+		t.Context(),
+		[]solana.PublicKey{chain.DeployerKey.PublicKey()},
+		100,
+		chain.Client,
+	)
+	require.NoError(t, err)
+	err = utils.FundFromDeployerKey(
+		chain,
+		[]solana.PublicKey{timelockSigner, mcmSigner},
+		10,
+	)
+	require.NoError(t, err)
+	mcmsInput := mcmsapi.TransferOwnershipInput{
+		ChainInputs: []mcmsapi.TransferOwnershipPerChainInput{
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(routerops.ContractType),
+						Version: routerops.Version,
+					},
+				},
+				CurrentOwner:  chain.DeployerKey.PublicKey().String(),
+				ProposedOwner: timelockSigner.String(),
+			},
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(offrampops.ContractType),
+						Version: offrampops.Version,
+					},
+				},
+				CurrentOwner:  chain.DeployerKey.PublicKey().String(),
+				ProposedOwner: timelockSigner.String(),
+			},
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(fqops.ContractType),
+						Version: fqops.Version,
+					},
+				},
+				CurrentOwner:  chain.DeployerKey.PublicKey().String(),
+				ProposedOwner: timelockSigner.String(),
+			},
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(rmnremoteops.ContractType),
+						Version: rmnremoteops.Version,
+					},
+				},
+				CurrentOwner:  chain.DeployerKey.PublicKey().String(),
+				ProposedOwner: timelockSigner.String(),
+			},
+		},
+		AdapterVersion: semver.MustParse("1.6.0"),
+		MCMS: mcms.Input{
+			OverridePreviousRoot: false,
+			ValidUntil:           3759765795,
+			TimelockDelay:        mcms_types.MustParseDuration("1s"),
+			TimelockAction:       mcms_types.TimelockActionSchedule,
+			Qualifier:            common_utils.CLLQualifier,
+			Description:          "Transfer ownership test",
+		},
+	}
+
+	transferOutput, err := mcmsapi.TransferOwnershipChangeset(mcmsapi.GetTransferOwnershipRegistry(), mcmsreaderapi.GetRegistry()).Apply(*e, mcmsInput)
+	require.NoError(t, err)
+	require.Greater(t, len(transferOutput.Reports), 0)
+	require.Equal(t, 1, len(transferOutput.MCMSTimelockProposals))
+
+	testhelpers.ProcessTimelockProposals(t, *e, transferOutput.MCMSTimelockProposals, false)
+	// router verify
+	program := datastore_utils.GetAddressRef(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		routerops.ContractType,
+		common_utils.Version_1_6_0,
+		"",
+	)
+	require.Equal(t, timelockSigner, routerops.GetAuthority(chain, solana.MustPublicKeyFromBase58(program.Address)))
+	// offramp verify
+	program = datastore_utils.GetAddressRef(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		offrampops.ContractType,
+		common_utils.Version_1_6_0,
+		"",
+	)
+	require.Equal(t, timelockSigner, offrampops.GetAuthority(chain, solana.MustPublicKeyFromBase58(program.Address)))
+	// fee quoter verify
+	program = datastore_utils.GetAddressRef(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		fqops.ContractType,
+		common_utils.Version_1_6_0,
+		"",
+	)
+	require.Equal(t, timelockSigner, fqops.GetAuthority(chain, solana.MustPublicKeyFromBase58(program.Address)))
+	// rmn remote verify
+	program = datastore_utils.GetAddressRef(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		rmnremoteops.ContractType,
+		common_utils.Version_1_6_0,
+		"",
+	)
+	require.Equal(t, timelockSigner, rmnremoteops.GetAuthority(chain, solana.MustPublicKeyFromBase58(program.Address)))
+}
+
+func SolanaTransferMCMSContracts(t *testing.T, e *cldf_deployment.Environment, selector uint64, qualifier string, testTransferBack bool) {
+	chain := e.BlockChains.SolanaChains()[selector]
+	timelockSigner := utils.GetTimelockSignerPDA(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		qualifier)
+	mcmSigner := utils.GetMCMSignerPDA(
+		e.DataStore.Addresses().Filter(),
+		chain.Selector,
+		common_utils.ProposerManyChainMultisig,
+		qualifier,
+	)
+	err := utils.FundSolanaAccounts(
+		t.Context(),
+		[]solana.PublicKey{chain.DeployerKey.PublicKey()},
+		100,
+		chain.Client,
+	)
+	require.NoError(t, err)
+	err = utils.FundFromDeployerKey(
+		chain,
+		[]solana.PublicKey{timelockSigner, mcmSigner},
+		10,
+	)
+	require.NoError(t, err)
+	mcmsRefs := utils.GetAllMCMS(
+		chain,
+		qualifier,
+		e.DataStore.Addresses().Filter(),
+	)
+	mcmsInput := mcmsapi.TransferOwnershipInput{
+		ChainInputs: []mcmsapi.TransferOwnershipPerChainInput{
+			{
+				ChainSelector: chain.Selector,
+				ContractRef:   mcmsRefs,
+				CurrentOwner:  chain.DeployerKey.PublicKey().String(),
+				ProposedOwner: timelockSigner.String(),
+			},
+		},
+		AdapterVersion: semver.MustParse("1.6.0"),
+		MCMS: mcms.Input{
+			OverridePreviousRoot: false,
+			ValidUntil:           3759765795,
+			TimelockDelay:        mcms_types.MustParseDuration("1s"),
+			TimelockAction:       mcms_types.TimelockActionSchedule,
+			Qualifier:            qualifier,
+			Description:          "Transfer ownership test",
+		},
+	}
+
+	transferOutput, err := mcmsapi.TransferOwnershipChangeset(mcmsapi.GetTransferOwnershipRegistry(), mcmsreaderapi.GetRegistry()).Apply(*e, mcmsInput)
+	require.NoError(t, err)
+	require.Greater(t, len(transferOutput.Reports), 0)
+	require.Equal(t, 1, len(transferOutput.MCMSTimelockProposals))
+
+	testhelpers.ProcessTimelockProposals(t, *e, transferOutput.MCMSTimelockProposals, false)
+	if testTransferBack {
+		mcmsRefs = mcmsRefs[len(mcmsRefs)-4:] // get only mcms refs
+		// transfer back to mcmSigner
+		mcmsInputBack := mcmsapi.TransferOwnershipInput{
+			ChainInputs: []mcmsapi.TransferOwnershipPerChainInput{
+				{
+					ChainSelector: chain.Selector,
+					ContractRef:   mcmsRefs,
+					CurrentOwner:  timelockSigner.String(),
+					ProposedOwner: chain.DeployerKey.PublicKey().String(),
+				},
+			},
+			AdapterVersion: semver.MustParse("1.6.0"),
+			MCMS: mcms.Input{
+				OverridePreviousRoot: false,
+				ValidUntil:           3759765795,
+				TimelockDelay:        mcms_types.MustParseDuration("1s"),
+				TimelockAction:       mcms_types.TimelockActionSchedule,
+				Qualifier:            qualifier,
+				Description:          "Transfer ownership back test",
+			},
+		}
+		transferBackOutput, err := mcmsapi.TransferOwnershipChangeset(mcmsapi.GetTransferOwnershipRegistry(), mcmsreaderapi.GetRegistry()).Apply(*e, mcmsInputBack)
+		require.NoError(t, err)
+		require.Greater(t, len(transferBackOutput.Reports), 0)
+		require.Equal(t, 1, len(transferBackOutput.MCMSTimelockProposals))
+
+		testhelpers.ProcessTimelockProposals(t, *e, transferBackOutput.MCMSTimelockProposals, false)
+
+		acceptBackOutput, err := mcmsapi.AcceptOwnershipChangeset(mcmsapi.GetTransferOwnershipRegistry(), mcmsreaderapi.GetRegistry()).Apply(*e, mcmsInputBack)
+		require.NoError(t, err)
+		require.Greater(t, len(acceptBackOutput.Reports), 0)
+		require.Equal(t, 0, len(acceptBackOutput.MCMSTimelockProposals))
+	}
+}
+
+func EVMTransferOwnership(t *testing.T, e *cldf_deployment.Environment, selector uint64) {
+	chain := e.BlockChains.EVMChains()[selector]
+	timelockAddrs := make(map[uint64]string)
+	for _, addrRef := range e.DataStore.Addresses().Filter() {
+		if addrRef.Type == datastore.ContractType(common_utils.RBACTimelock) {
+			timelockAddrs[addrRef.ChainSelector] = addrRef.Address
+		}
+	}
+
+	// Add the timelock as an authorized caller (price updater) on the FeeQuoter.
+	// This must happen while the deployer is still the owner (before ownership transfer).
+	// The FeeQuoter's updatePrices requires msg.sender to be in the authorizedCallers set.
+	if timelockAddr, ok := timelockAddrs[selector]; ok {
+		for _, addrRef := range e.DataStore.Addresses().Filter(
+			datastore.AddressRefByChainSelector(selector),
+			datastore.AddressRefByType(datastore.ContractType(fq163ops.ContractType)),
+		) {
+			fq, err := fq163ops.NewFeeQuoterContract(common.HexToAddress(addrRef.Address), chain.Client)
+			require.NoError(t, err, "failed to create FeeQuoter contract instance")
+			tx, err := fq.ApplyAuthorizedCallerUpdates(chain.DeployerKey, fq163ops.AuthorizedCallerArgs{
+				AddedCallers: []common.Address{common.HexToAddress(timelockAddr)},
+			})
+			require.NoError(t, err, "failed to add timelock as FeeQuoter price updater")
+			_, err = chain.Confirm(tx)
+			require.NoError(t, err, "failed to confirm FeeQuoter authorized caller update")
+			t.Logf("Added timelock %s as authorized caller on FeeQuoter %s", timelockAddr, addrRef.Address)
+		}
+	}
+
+	mcmsInput := mcmsapi.TransferOwnershipInput{
+		ChainInputs: []mcmsapi.TransferOwnershipPerChainInput{
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(fq163ops.ContractType),
+						Version: fq163ops.Version,
+					},
+				},
+				ProposedOwner: timelockAddrs[chain.Selector],
+			},
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(evmrouterops.ContractType),
+						Version: evmrouterops.Version,
+					},
+				},
+				ProposedOwner: timelockAddrs[chain.Selector],
+			},
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(evmofframpops.ContractType),
+						Version: evmofframpops.Version,
+					},
+				},
+				ProposedOwner: timelockAddrs[chain.Selector],
+			},
+			{
+				ChainSelector: chain.Selector,
+				ContractRef: []datastore.AddressRef{
+					{
+						Type:    datastore.ContractType(evmonrampops.ContractType),
+						Version: evmonrampops.Version,
+					},
+				},
+				ProposedOwner: timelockAddrs[chain.Selector],
+			},
+		},
+		AdapterVersion: semver.MustParse("1.6.0"),
+		MCMS: mcms.Input{
+			OverridePreviousRoot: false,
+			ValidUntil:           3759765795,
+			TimelockDelay:        mcms_types.MustParseDuration("0s"),
+			TimelockAction:       mcms_types.TimelockActionSchedule,
+			Qualifier:            common_utils.CLLQualifier,
+			Description:          "Transfer ownership test",
+		},
+	}
+	transferOutput, err := mcmsapi.TransferOwnershipChangeset(mcmsapi.GetTransferOwnershipRegistry(), mcmsreaderapi.GetRegistry()).Apply(*e, mcmsInput)
+	require.NoError(t, err)
+	require.Greater(t, len(transferOutput.Reports), 0)
+	require.Equal(t, 1, len(transferOutput.MCMSTimelockProposals))
+	testhelpers.ProcessTimelockProposals(t, *e, transferOutput.MCMSTimelockProposals, false)
+}
+
+func MergeAddresses(t *testing.T, env *cldf_deployment.Environment, ds datastore.MutableDataStore) {
+	t.Helper()
+
+	if ds != nil {
+		require.NoError(t, ds.Merge(env.DataStore))
+		env.DataStore = ds.Seal()
+	}
+}
+
+func NewDefaultDeploymentConfigForSolana(version *semver.Version) deploy.ContractDeploymentConfigPerChain {
+	return deploy.ContractDeploymentConfigPerChain{
+		Version:                      version,
+		MaxFeeJuelsPerMsg:            big.NewInt(0).Mul(big.NewInt(200), big.NewInt(1e18)),
+		TokenPriceStalenessThreshold: uint32(24 * 60 * 60),
+		NativeTokenPremiumMultiplier: 1e18, // 1.0 ETH
+		LinkPremiumMultiplier:        9e17, // 0.9 ETH
+		TokenPrivKey:                 solana.NewWallet().PrivateKey.String(),
+		TokenDecimals:                9,
+	}
+}
+
+func NewDefaultDeploymentConfigForEVM(version *semver.Version) deploy.ContractDeploymentConfigPerChain {
+	return deploy.ContractDeploymentConfigPerChain{
+		Version:                                 version,
+		MaxFeeJuelsPerMsg:                       big.NewInt(0).Mul(big.NewInt(200), big.NewInt(1e18)),
+		TokenPriceStalenessThreshold:            uint32(24 * 60 * 60),
+		NativeTokenPremiumMultiplier:            1e18, // 1.0 ETH
+		LinkPremiumMultiplier:                   9e17, // 0.9 ETH
+		PermissionLessExecutionThresholdSeconds: uint32((20 * time.Minute).Seconds()),
+		GasForCallExactCheck:                    uint16(5000),
+		TokenDecimals:                           18,
+	}
+}
+
+func NewDefaultInputForMCMS(desc string, overrides ...func(*mcms.Input)) mcms.Input {
+	in := mcms.Input{
+		OverridePreviousRoot: false,
+		ValidUntil:           math.MaxUint32,
+		TimelockDelay:        mcms_types.MustParseDuration("1s"),
+		TimelockAction:       mcms_types.TimelockActionSchedule,
+		Qualifier:            common_utils.CLLQualifier,
+		Description:          desc,
+	}
+	for _, override := range overrides {
+		override(&in)
+	}
+	return in
+}

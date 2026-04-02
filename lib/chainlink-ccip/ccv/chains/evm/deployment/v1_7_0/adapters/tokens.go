@@ -1,0 +1,135 @@
+package adapters
+
+import (
+	"fmt"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+
+	evm_tokens "github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v1_7_0/sequences/tokens"
+	"github.com/smartcontractkit/chainlink-ccip/ccv/chains/evm/deployment/v2_0_0/operations/token_pool"
+	"github.com/smartcontractkit/chainlink-ccip/chains/evm/deployment/utils/operations/contract"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/tokens"
+	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
+	"github.com/smartcontractkit/chainlink-deployments-framework/chain"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	"github.com/smartcontractkit/chainlink-deployments-framework/operations"
+	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
+	"github.com/smartcontractkit/chainlink-evm/gethwrappers/shared/generated/initial/erc20"
+)
+
+var _ tokens.TokenAdapter = &TokenAdapter{}
+
+// TokenAdapter is the adapter for EVM tokens using 2.0.0 token pools.
+type TokenAdapter struct{}
+
+// ConfigureTokenForTransfersSequence returns the sequence for configuring an EVM token with a 2.0.0 token pool.
+func (t *TokenAdapter) ConfigureTokenForTransfersSequence() *operations.Sequence[tokens.ConfigureTokenForTransfersInput, sequences.OnChainOutput, chain.BlockChains] {
+	return evm_tokens.ConfigureTokenForTransfers
+}
+
+// AddressRefToBytes returns an EVM address reference as an EVM address.
+func (t *TokenAdapter) AddressRefToBytes(ref datastore.AddressRef) ([]byte, error) {
+	return common.HexToAddress(ref.Address).Bytes(), nil
+}
+
+// DeriveTokenAddress derives the token address from a token pool reference, returning it as an EVM address.
+func (t *TokenAdapter) DeriveTokenAddress(e deployment.Environment, chainSelector uint64, poolRef datastore.AddressRef) ([]byte, error) {
+	chain, ok := e.BlockChains.EVMChains()[chainSelector]
+	if !ok {
+		return nil, fmt.Errorf("chain with selector %d not found", chainSelector)
+	}
+	getTokenReport, err := cldf_ops.ExecuteOperation(e.OperationsBundle, token_pool.GetToken, chain, contract.FunctionInput[struct{}]{
+		ChainSelector: chainSelector,
+		Address:       common.HexToAddress(poolRef.Address),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token address from token pool with address %s on %s: %w", poolRef.Address, chain, err)
+	}
+
+	return t.AddressRefToBytes(datastore.AddressRef{
+		Address: getTokenReport.Output.Hex(),
+	})
+}
+
+func (t *TokenAdapter) ManualRegistration() *cldf_ops.Sequence[tokens.ManualRegistrationSequenceInput, sequences.OnChainOutput, chain.BlockChains] {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) DeployToken() *cldf_ops.Sequence[tokens.DeployTokenInput, sequences.OnChainOutput, chain.BlockChains] {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) DeployTokenVerify(e deployment.Environment, in tokens.DeployTokenInput) error {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) DeployTokenPoolForToken() *cldf_ops.Sequence[tokens.DeployTokenPoolInput, sequences.OnChainOutput, chain.BlockChains] {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) SetPool() *cldf_ops.Sequence[tokens.TPRLRemotes, sequences.OnChainOutput, chain.BlockChains] {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) DeriveTokenDecimals(e deployment.Environment, chainSelector uint64, poolRef datastore.AddressRef, token []byte) (uint8, error) {
+	chain, ok := e.BlockChains.EVMChains()[chainSelector]
+	if !ok {
+		return 0, fmt.Errorf("chain with selector %d not found", chainSelector)
+	}
+	getTokenDecimalsReport, err := cldf_ops.ExecuteOperation(e.OperationsBundle, token_pool.GetTokenDecimals, chain, contract.FunctionInput[struct{}]{
+		ChainSelector: chainSelector,
+		Address:       common.HexToAddress(poolRef.Address),
+	})
+	if err == nil {
+		return getTokenDecimalsReport.Output, nil
+	}
+	poolErr := err
+
+	// Fallback to fetch token's decimals directly, this is useful for proxy pools like USDCTokenPoolProxy which does not expose the GetTokenDecimals function.
+	tokenAddr := common.BytesToAddress(token)
+	if tokenAddr.Cmp(common.Address{}) == 0 {
+		getTokenReport, getTokErr := cldf_ops.ExecuteOperation(e.OperationsBundle, token_pool.GetToken, chain, contract.FunctionInput[struct{}]{
+			ChainSelector: chainSelector,
+			Address:       common.HexToAddress(poolRef.Address),
+		})
+		if getTokErr != nil {
+			return 0, fmt.Errorf("failed to get token decimals from token pool with address %s on %s: %w", poolRef.Address, chain, poolErr)
+		}
+		tokenAddr = getTokenReport.Output
+	}
+
+	tokenContract, newErr := erc20.NewERC20(tokenAddr, chain.Client)
+	if newErr != nil {
+		return 0, fmt.Errorf("failed to get token decimals from token pool with address %s on %s: %w; failed to bind erc20 at token %s: %w", poolRef.Address, chain, poolErr, tokenAddr.Hex(), newErr)
+	}
+	decimals, erc20Err := tokenContract.Decimals(&bind.CallOpts{Context: e.GetContext()})
+	if erc20Err != nil {
+		return 0, fmt.Errorf("failed to get token decimals from token pool with address %s on %s: %w; erc20.decimals on token %s also failed: %w", poolRef.Address, chain, poolErr, tokenAddr.Hex(), erc20Err)
+	}
+	return decimals, nil
+}
+
+func (t *TokenAdapter) DeriveTokenPoolCounterpart(e deployment.Environment, chainSelector uint64, tokenPool []byte, token []byte) ([]byte, error) {
+	return tokenPool, nil
+}
+
+func (t *TokenAdapter) SetTokenPoolRateLimits() *operations.Sequence[tokens.TPRLRemotes, sequences.OnChainOutput, chain.BlockChains] {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) UpdateAuthorities() *cldf_ops.Sequence[tokens.UpdateAuthoritiesInput, sequences.OnChainOutput, *deployment.Environment] {
+	// TODO implement me
+	return nil
+}
+
+func (t *TokenAdapter) MigrateLockReleasePoolLiquiditySequence() *cldf_ops.Sequence[tokens.MigrateLockReleasePoolLiquidityInput, sequences.OnChainOutput, chain.BlockChains] {
+	return evm_tokens.MigrateLockReleasePoolLiquidity
+}

@@ -1,0 +1,243 @@
+package tokens
+
+import (
+	"fmt"
+	"math/big"
+	"sync"
+
+	"github.com/Masterminds/semver/v3"
+
+	"github.com/smartcontractkit/chainlink-ccip/deployment/utils/sequences"
+	cldf_chain "github.com/smartcontractkit/chainlink-deployments-framework/chain"
+	"github.com/smartcontractkit/chainlink-deployments-framework/datastore"
+	"github.com/smartcontractkit/chainlink-deployments-framework/deployment"
+	cldf_ops "github.com/smartcontractkit/chainlink-deployments-framework/operations"
+)
+
+type tokenAdapterID string
+
+// TokenAdapter defines the interface that each chain family + token pool version combo must implement to support cross-chain token configuration.
+type TokenAdapter interface {
+	// ConfigureTokenForTransfersSequence returns a sequence that configures a token pool for cross-chain transfers.
+	// The sequence should target a single chain, performing anything required on that chain to enable the token for CCIP transfers.
+	// This assumes that the token and token pool are already deployed and registered on-chain.
+	ConfigureTokenForTransfersSequence() *cldf_ops.Sequence[ConfigureTokenForTransfersInput, sequences.OnChainOutput, cldf_chain.BlockChains]
+	// AddressRefToBytes converts an AddressRef to a byte slice representing the address.
+	// Each chain family has their own way of serializing addresses from strings and needs to specify this logic.
+	AddressRefToBytes(ref datastore.AddressRef) ([]byte, error)
+	// DeriveTokenAddress derives the token address (in bytes) from the given token pool reference.
+	// For example, if this address is stored on the pool, this method should fetch it.
+	DeriveTokenAddress(e deployment.Environment, chainSelector uint64, poolRef datastore.AddressRef) ([]byte, error)
+	// DeriveTokenDecimals derives the token decimals from the given token pool reference.
+	DeriveTokenDecimals(e deployment.Environment, chainSelector uint64, poolRef datastore.AddressRef, token []byte) (uint8, error)
+	// For some chains, the token pool address is not the deployed address and must be derived from the token reference.
+	// This method performs that derivation.
+	DeriveTokenPoolCounterpart(e deployment.Environment, chainSelector uint64, tokenPool []byte, token []byte) ([]byte, error)
+	// ManualRegistration manually registers a customer token with the token admin registry.
+	// This is usally done as they no longer have mint authority over the token.
+	ManualRegistration() *cldf_ops.Sequence[ManualRegistrationSequenceInput, sequences.OnChainOutput, cldf_chain.BlockChains]
+	// SetTokenPoolRateLimits returns a sequence that sets rate limits on a token pool.
+	SetTokenPoolRateLimits() *cldf_ops.Sequence[TPRLRemotes, sequences.OnChainOutput, cldf_chain.BlockChains]
+	DeployToken() *cldf_ops.Sequence[DeployTokenInput, sequences.OnChainOutput, cldf_chain.BlockChains]
+	DeployTokenVerify(e deployment.Environment, in DeployTokenInput) error
+	DeployTokenPoolForToken() *cldf_ops.Sequence[DeployTokenPoolInput, sequences.OnChainOutput, cldf_chain.BlockChains]
+	UpdateAuthorities() *cldf_ops.Sequence[UpdateAuthoritiesInput, sequences.OnChainOutput, *deployment.Environment]
+	// MigrateLockReleasePoolLiquiditySequence returns a sequence that migrates liquidity from a legacy
+	// LockReleaseTokenPool (v1.5.1/v1.6.1) to a v2.0 lockbox-based pool. Returns nil if not supported.
+	// Used by the standalone MigrateLockReleasePoolLiquidity changeset.
+	MigrateLockReleasePoolLiquiditySequence() *cldf_ops.Sequence[MigrateLockReleasePoolLiquidityInput, sequences.OnChainOutput, cldf_chain.BlockChains]
+}
+
+// MigrateLockReleasePoolLiquidityInput is the input for the liquidity migration sequence.
+type MigrateLockReleasePoolLiquidityInput struct {
+	ChainSelector  uint64
+	OldPoolAddress string
+	NewPoolAddress string
+	// TimelockAddress is the MCMS timelock address that will execute the migration operations.
+	// Required because the timelock must be set as the rebalancer and authorized caller.
+	TimelockAddress string
+	// Amount specifies an exact token amount to migrate. Mutually exclusive with BasisPoints.
+	Amount *big.Int
+	// BasisPoints specifies a percentage of the old pool's balance to migrate (1-10000, where 10000 = 100%).
+	// Mutually exclusive with Amount. For siloed pools, only BasisPoints is supported.
+	BasisPoints *uint16
+	// SetPoolConfig, if provided, triggers a setPool call on the TokenAdminRegistry after migration.
+	SetPoolConfig *MigrationSetPoolConfig
+}
+
+// MigrationSetPoolConfig configures the optional setPool call during migration.
+type MigrationSetPoolConfig struct {
+	RegistryAddress string
+	TokenAddress    string
+}
+
+// RateLimiterConfig specifies configuration for a rate limiter on a token pool.
+type RateLimiterConfig struct {
+	// IsEnabled specifies whether the rate limiter should be enabled.
+	IsEnabled bool
+	// Capacity is the maximum number of tokens that can be in a rate limiter bucket.
+	Capacity *big.Int
+	// Rate is the rate at which the rate limiter bucket refills, in tokens per second.
+	Rate *big.Int
+}
+
+// TokenTransferFeeConfig specifies configuration for a token transfer fee on a token pool.
+type TokenTransferFeeConfig struct {
+	// DestGasOverhead is the gas overhead for the token transfer.
+	DestGasOverhead uint32
+	// DestBytesOverhead is the bytes overhead for the token transfer.
+	DestBytesOverhead uint32
+	// DefaultFinalityFeeUSDCents is the flat fee for a default finality transfer.
+	DefaultFinalityFeeUSDCents uint32
+	// CustomFinalityFeeUSDCents is the flat fee for a custom finality transfer.
+	CustomFinalityFeeUSDCents uint32
+	// DefaultFinalityTransferFeeBps is the bps fee for a default finality transfer.
+	DefaultFinalityTransferFeeBps uint16
+	// CustomFinalityTransferFeeBps is the bps fee for a custom finality transfer.
+	CustomFinalityTransferFeeBps uint16
+	// IsEnabled is whether the token transfer fee config is enabled.
+	IsEnabled bool
+}
+
+// RateLimiterConfigFloatInput is the user-friendly version of RateLimiterConfig that accepts
+// float inputs for capacity and rate, which are then converted to big.Int internally after scaling by token decimals.
+type RateLimiterConfigFloatInput struct {
+	// IsEnabled specifies whether the rate limiter should be enabled.
+	IsEnabled bool `yaml:"isEnabled" json:"isEnabled"`
+	// Capacity is the maximum number of tokens that can be in a rate limiter bucket.
+	Capacity float64 `yaml:"capacity" json:"capacity"`
+	// Rate is the rate at which the rate limiter bucket refills, in tokens per second.
+	Rate float64 `yaml:"rate" json:"rate"`
+}
+
+// RemoteChainConfig specifies configuration for a remote chain on a token pool.
+type RemoteChainConfig[R any, CCV any] struct {
+	// The token on the remote chain.
+	// If not provided, the token will be derived from the pool reference.
+	RemoteToken R `yaml:"remoteToken" json:"remoteToken"`
+	// The token pool on the remote chain.
+	RemotePool R `yaml:"remotePool" json:"remotePool"`
+	// DefaultFinalityInboundRateLimiterConfig specifies the desired rate limiter configuration for default-finality inbound traffic.
+	// DO NOT SET THIS VALUE WHEN PASSING IN INPUTS.
+	// This value is derived from the configuration specified for outbound traffic to the remote chain, as the same limits should apply in both directions.
+	DefaultFinalityInboundRateLimiterConfig RateLimiterConfigFloatInput `yaml:"defaultFinalityInboundRateLimiterConfig" json:"defaultFinalityInboundRateLimiterConfig"`
+	// DefaultFinalityOutboundRateLimiterConfig specifies the desired rate limiter configuration for default-finality outbound traffic.
+	DefaultFinalityOutboundRateLimiterConfig RateLimiterConfigFloatInput `yaml:"defaultFinalityOutboundRateLimiterConfig" json:"defaultFinalityOutboundRateLimiterConfig"`
+	// CustomFinalityInboundRateLimiterConfig specifies the desired rate limiter configuration for custom-finality inbound traffic.
+	// DO NOT SET THIS VALUE WHEN PASSING IN INPUTS.
+	// This value is derived from the configuration specified for outbound traffic to the remote chain, as the same limits should apply in both directions.
+	CustomFinalityInboundRateLimiterConfig RateLimiterConfigFloatInput `yaml:"customFinalityInboundRateLimiterConfig" json:"customFinalityInboundRateLimiterConfig"`
+	// CustomFinalityOutboundRateLimiterConfig specifies the desired rate limiter configuration for custom-finality outbound traffic.
+	CustomFinalityOutboundRateLimiterConfig RateLimiterConfigFloatInput `yaml:"customFinalityOutboundRateLimiterConfig" json:"customFinalityOutboundRateLimiterConfig"`
+	// Decimals of the token on the remote chain.
+	RemoteDecimals uint8 `yaml:"remoteDecimals,string" json:"remoteDecimals,string"`
+	// OutboundCCVs specifies the verifiers to apply to outbound traffic.
+	OutboundCCVs []CCV `yaml:"outboundCCVs" json:"outboundCCVs"`
+	// InboundCCVs specifies the verifiers to apply to inbound traffic.
+	InboundCCVs []CCV `yaml:"inboundCCVs" json:"inboundCCVs"`
+	// OutboundCCVsToAddAboveThreshold specifies the verifiers to apply to outbound traffic above the threshold.
+	OutboundCCVsToAddAboveThreshold []CCV `yaml:"outboundCCVsToAddAboveThreshold" json:"outboundCCVsToAddAboveThreshold"`
+	// InboundCCVsToAddAboveThreshold specifies the verifiers to apply to inbound traffic above the threshold.
+	InboundCCVsToAddAboveThreshold []CCV `yaml:"inboundCCVsToAddAboveThreshold" json:"inboundCCVsToAddAboveThreshold"`
+	// TokenTransferFeeConfig specifies the desired token transfer fee configuration for this remote chain.
+	TokenTransferFeeConfig TokenTransferFeeConfig `yaml:"tokenTransferFeeConfig" json:"tokenTransferFeeConfig"`
+}
+
+// ConfigureTokenForTransfersInput is the input for the ConfigureTokenForTransfers sequence.
+type ConfigureTokenForTransfersInput struct {
+	// ChainSelector is the chain selector for the chain being configured.
+	ChainSelector uint64
+	// TokenAddress is the address of the token being registered and configured.
+	TokenAddress string
+	// TokenPoolAddress is the address of the token pool to be configured.
+	TokenPoolAddress string
+	// RegistryTokenPoolAddress overrides the pool address to register in the token admin registry.
+	// If empty, TokenPoolAddress is used.
+	RegistryTokenPoolAddress string
+	// RemoteChains specifies the remote chains to configure on the token pool.
+	RemoteChains map[uint64]RemoteChainConfig[[]byte, string]
+	// ExternalAdmin is specified when we want to propose an admin that we don't control.
+	ExternalAdmin string
+	// RegistryAddress is the address of the contract on which the token pool must be registered.
+	RegistryAddress string
+	// MinFinalityValue is the minimum finality value required by the token pool.
+	// This can be interpreted as # of block confirmations, an ID, or otherwise.
+	// Interpretation is left to each chain family.
+	MinFinalityValue uint16
+	// LiquidityMigrationAmount, if set, specifies an exact token amount to migrate from the old pool
+	// to the new pool's lockbox. Mutually exclusive with LiquidityMigrationBasisPoints.
+	// The old pool is derived from the TokenAdminRegistry. Only used by EVM adapters.
+	LiquidityMigrationAmount *big.Int
+	// LiquidityMigrationBasisPoints specifies a percentage of the old pool's balance to migrate (1-10000, where 10000 = 100%).
+	// Mutually exclusive with LiquidityMigrationAmount. Only used by EVM adapters.
+	LiquidityMigrationBasisPoints *uint16
+	// TimelockAddress is the MCMS timelock address, resolved by the changeset from MCMS config.
+	// Required when a liquidity migration is triggered.
+	TimelockAddress string
+	// Below are not provided by the user and populated programmatically.
+	// ExistingDataStore is the datastore containing existing deployment data.
+	ExistingDataStore datastore.DataStore
+	// PoolType specifies the type of the token pool. Needed for Solana token pools.
+	PoolType string
+	// TokenAddress is the address of the token being configured.
+	TokenRef datastore.AddressRef
+}
+
+// TokenAdapterRegistry maintains a registry of TokenAdapters.
+type TokenAdapterRegistry struct {
+	mu sync.Mutex
+	m  map[tokenAdapterID]TokenAdapter
+}
+
+func newTokenAdapterRegistry() *TokenAdapterRegistry {
+	return &TokenAdapterRegistry{
+		m: make(map[tokenAdapterID]TokenAdapter),
+	}
+}
+
+// RegisterTokenAdapter allows chains to register their changeset logic.
+// Configuration logic not only differs by chain family, but also by version.
+// For example, 2.0.0 token pools require CCV configuration, while earlier versions do not.
+// 1.5.0 pools require remote pool addresses to be set, while earlier versions do not.
+// Thus each version of a token pool on a chain family should have its own adapter implementation.
+func (r *TokenAdapterRegistry) RegisterTokenAdapter(chainFamily string, version *semver.Version, adapter TokenAdapter) {
+	id := newTokenAdapterID(chainFamily, version)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.m[id]; exists {
+		panic(fmt.Errorf("TokenAdapter '%s %s' already registered", chainFamily, version))
+	}
+	r.m[id] = adapter
+}
+
+// GetTokenAdapter retrieves a registered TokenAdapter for the given chain family and version.
+// The boolean return value indicates whether an adapter was found.
+// Returns (nil, false) if version is nil to avoid panics when token config has no version set.
+func (r *TokenAdapterRegistry) GetTokenAdapter(chainFamily string, version *semver.Version) (TokenAdapter, bool) {
+	if version == nil {
+		return nil, false
+	}
+	id := newTokenAdapterID(chainFamily, version)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	adapter, ok := r.m[id]
+	return adapter, ok
+}
+
+var (
+	singletonRegistry *TokenAdapterRegistry
+	once              sync.Once
+)
+
+// GetTokenAdapterRegistry returns the global singleton instance.
+// The first call creates the registry; subsequent calls return the same pointer.
+func GetTokenAdapterRegistry() *TokenAdapterRegistry {
+	once.Do(func() {
+		singletonRegistry = newTokenAdapterRegistry()
+	})
+	return singletonRegistry
+}
+
+func newTokenAdapterID(chainFamily string, version *semver.Version) tokenAdapterID {
+	return tokenAdapterID(fmt.Sprintf("%s-%s", chainFamily, version.String()))
+}
