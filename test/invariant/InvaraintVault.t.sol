@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.24;
 
-import {Handler} from "./Handler.sol";
+import {Handler} from "./HandlerVault.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {Test} from "forge-std/Test.sol";
 import {RebaseToken} from "../../src/RebaseToken.sol";
