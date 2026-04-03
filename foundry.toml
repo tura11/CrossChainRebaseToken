@@ -5,7 +5,7 @@ libs = ["lib"]
 
 remappings = [
     '@openzeppelin/=lib/openzeppelin-contracts/',
-    '@ccip=lib/ccip/',
+    '@ccip/=lib/ccip/contracts/src/v0.8/',
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
