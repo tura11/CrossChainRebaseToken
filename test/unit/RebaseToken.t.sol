@@ -60,7 +60,7 @@ contract RebaseTokenTest is Test {
         vm.prank(owner);
         token.grantMintAndBurnRole(userPerm);
         vm.prank(userPerm);
-        token.mint(userPerm, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         
         assertEq(token.balanceOf(userPerm), 1e18);
         assertEq(token.getInterestRate(), 5e10);
@@ -71,11 +71,11 @@ contract RebaseTokenTest is Test {
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
         
-        token.mint(userPerm, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         vm.warp(block.timestamp + 30 days);
         
         uint256 balanceAfter30Days = token.balanceOf(userPerm);
-        token.mint(userPerm, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         
         uint256 expectedPrinciple = balanceAfter30Days + 1e18;
         assertEq(token.principleBalanceOf(userPerm), expectedPrinciple);
@@ -92,7 +92,7 @@ contract RebaseTokenTest is Test {
     function testUserWithoutPermCannotMint() public {
         vm.prank(user);
         vm.expectRevert();
-        token.mint(user, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
     }
 
 
@@ -106,7 +106,7 @@ contract RebaseTokenTest is Test {
         vm.prank(owner);
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
-        token.mint(userPerm, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         assertEq(token.balanceOf(userPerm), 1e18);
         token.burn(userPerm, 1e18);
         vm.stopPrank();
@@ -119,7 +119,7 @@ contract RebaseTokenTest is Test {
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
 
-        token.mint(userPerm, 4e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         vm.warp(block.timestamp + 30 days);
 
         uint256 balanceWithInterest = token.balanceOf(userPerm);
@@ -134,7 +134,7 @@ contract RebaseTokenTest is Test {
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
 
-        token.mint(userPerm, 4e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         vm.warp(block.timestamp + 30 days);
 
         token.burn(userPerm, 1e18);
@@ -151,7 +151,7 @@ contract RebaseTokenTest is Test {
         vm.prank(owner);
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
-        token.mint(userPerm, 1000e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         token.burn(userPerm, type(uint256).max);
         vm.stopPrank();
         assertEq(token.balanceOf(userPerm), 0);
@@ -166,7 +166,7 @@ contract RebaseTokenTest is Test {
         vm.prank(owner);
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
-        token.mint(userPerm, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         token.transfer(user, 1e18);
         vm.stopPrank();
         assertEq(token.balanceOf(userPerm), 0);
@@ -178,7 +178,7 @@ contract RebaseTokenTest is Test {
         vm.prank(owner);
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
-        token.mint(userPerm, 1000e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         token.transfer(user, type(uint256).max);
         vm.stopPrank();
         assertEq(token.balanceOf(userPerm), 0);
@@ -191,7 +191,7 @@ contract RebaseTokenTest is Test {
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
         token.approve(owner, 1e18);
-        token.mint(userPerm, 1e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         vm.stopPrank();
         vm.prank(owner);
         token.transferFrom(userPerm, user, 1e18);
@@ -205,7 +205,7 @@ contract RebaseTokenTest is Test {
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
         token.approve(owner, 1000e18);
-        token.mint(userPerm, 1000e18);
+        token.mint(userPerm, 1e18, token.getInterestRate());
         vm.stopPrank();
         vm.prank(owner);
         token.transferFrom(userPerm, user, type(uint256).max);

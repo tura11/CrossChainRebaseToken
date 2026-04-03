@@ -26,10 +26,11 @@ contract HandlerRebaseToken is Test {
 
     function mint(uint256 amount, uint256 actorIndex) public {
         address user = users[bound(actorIndex, 0, users.length - 1)];
+        uint256 interestRate = token.getInterestRate();
         amount = bound(amount, 1e5, type(uint96).max);
         vm.deal(user, amount);
         vm.prank(user);
-        token.mint(user, amount);
+        token.mint(user, amount, interestRate);
         totalMinted += amount;
     }
 
