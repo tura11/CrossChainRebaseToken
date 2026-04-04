@@ -33,12 +33,12 @@ contract CrossChainTest is Test {
 
         vm.startPrank(owner);
         sepoliaToken = new RebaseToken();
-        vault = new Vault(IRebaseToken(sepoliaToken));
+        vault = new Vault(IRebaseToken(address(sepoliaToken)));
         vm.stopPrank();
 
         vm.selectFork(arbSepoliaFork);
         vm.startPrank(owner);
-        arbSepoliaToken = new RebaseToken(IRebaseToken(arbSepoliaToken));
+        vault = new Vault(IRebaseToken(address(arbSepoliaToken)));
         vm.stopPrank();
     }
 }
