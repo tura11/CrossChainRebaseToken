@@ -60,7 +60,7 @@ contract RebaseTokenTest is Test {
         vm.prank(owner);
         token.grantMintAndBurnRole(userPerm);
         vm.prank(userPerm);
-        token.mint(userPerm, 1e18, token.getInterestRate());
+        token.mint(userPerm, 1e18, 5e10);
         
         assertEq(token.balanceOf(userPerm), 1e18);
         assertEq(token.getInterestRate(), 5e10);
@@ -92,7 +92,7 @@ contract RebaseTokenTest is Test {
     function testUserWithoutPermCannotMint() public {
         vm.prank(user);
         vm.expectRevert();
-        token.mint(userPerm, 1e18, token.getInterestRate());
+        token.mint(userPerm, 1e18, 5e10);
     }
 
 
@@ -134,7 +134,7 @@ contract RebaseTokenTest is Test {
         token.grantMintAndBurnRole(userPerm);
         vm.startPrank(userPerm);
 
-        token.mint(userPerm, 1e18, token.getInterestRate());
+        token.mint(userPerm, 10e18, token.getInterestRate());
         vm.warp(block.timestamp + 30 days);
 
         token.burn(userPerm, 1e18);
@@ -182,7 +182,7 @@ contract RebaseTokenTest is Test {
         token.transfer(user, type(uint256).max);
         vm.stopPrank();
         assertEq(token.balanceOf(userPerm), 0);
-        assertEq(token.balanceOf(user), 1000e18);
+        assertEq(token.balanceOf(user), 1e18);
         assertEq(token.getUserInterestRate(user), 5e10);
     }
 
@@ -211,7 +211,7 @@ contract RebaseTokenTest is Test {
         token.transferFrom(userPerm, user, type(uint256).max);
         
         assertEq(token.balanceOf(userPerm), 0);
-        assertEq(token.balanceOf(user), 1000e18);
+        assertEq(token.balanceOf(user), 1e18);
         assertEq(token.getUserInterestRate(user), 5e10);
     }
  
