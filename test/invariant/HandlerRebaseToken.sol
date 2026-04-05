@@ -45,8 +45,27 @@ contract HandlerRebaseToken is Test {
     }
 
 
+    function transfer(address recipient, uint256 amount, uint256 actorIndex) public {
+        address user = users[bound(actorIndex, 0, users.length - 1)];
+        uint256 maxAmount = token.balanceOf(user);
+        amount = bound(amount, 1e5, maxAmount);
+        token.transfer(recipient, amount);
+        
+    }
+
+
+    function transferFrom(address sender, address recipient, uint256 amount, uint256 actorIndex) public {
+        address user = users[bound(actorIndex, 0, users.length - 1)];
+        uint256 maxAmount = token.balanceOf(user);
+        amount = bound(amount, 1e5, maxAmount);
+        vm.prank(sender);
+        token.approve(address(this), amount);
+        token.transferFrom(sender, recipient, amount);
+    }
+
+
     function warp(uint256 time) public {
-        time = bound(time,0, 365days);
+        time = bound(time,0, 365 days);
         vm.warp(block.timestamp + time);
     }
 
