@@ -20,6 +20,8 @@ contract HandlerRebaseToken is Test {
         users[1] = makeAddr("user2");
         users[2] = makeAddr("user3");
         owner = makeAddr("owner");
+        vm.prank(owner);
+        token.grantMintAndBurnRole(address(this));
     }
 
 
@@ -28,10 +30,28 @@ contract HandlerRebaseToken is Test {
         address user = users[bound(actorIndex, 0, users.length - 1)];
         uint256 interestRate = token.getInterestRate();
         amount = bound(amount, 1e5, type(uint96).max);
-        vm.deal(user, amount);
-        vm.prank(user);
         token.mint(user, amount, interestRate);
         totalMinted += amount;
+    }
+
+
+    function  burn(uint256 amount, uint256 actorIndex) public {
+        address user = users[bound(actorIndex, 0, users.length - 1)];
+        uint256 maxAmount = token.balanceOf(user);
+        if(amount < 1e5) return;
+        amount = bound(amount, 1e5, maxAmount);
+        token.burn(user, amount);
+        totalBurned += amount;
+    }
+
+
+    function warp(uint256 time) public {
+        time = bound(time,0, 365days);
+        vm.warp(block.timestamp + time);
+    }
+
+    function getUsers() public view returns (address[] memory) {
+        return users;
     }
 
 
