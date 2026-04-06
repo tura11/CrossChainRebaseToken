@@ -68,12 +68,5 @@ contract HandlerRebaseToken is Test {
         time = bound(time,0, 365 days);
         vm.warp(block.timestamp + time);
     }
-
-    function getUsers() public view returns (address[] memory) {
-        return users;
-    }
-
-
-
-    
+  
 }
