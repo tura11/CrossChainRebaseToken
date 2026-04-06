@@ -80,7 +80,7 @@ contract CrossChainTest is Test {
         chainsToAdd[0] = TokenPool.ChainUpdate({
             remoteChainSelector: remoteChainSelector,
             allowed: true,
-            remotePoolAddress: remotePoolAddresses,
+            remotePoolAddress: abi.encode(remotePoolAddresses),
             remoteTokenAddress: abi.encode(remoteTokenAddress),
             outboundRateLimiterConfig: RateLimiter.Config({
                 isEnabled: false,
@@ -93,6 +93,6 @@ contract CrossChainTest is Test {
                 rate: 0
             })
         });
-        TokenPool(localPool).applyChainUpdates(new uint64[](0), chainsToAdd);
+        TokenPool(localPool).applyChainUpdates(chainsToAdd);
     }
 }
