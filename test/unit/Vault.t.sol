@@ -44,7 +44,7 @@ contract VaultTest is Test {
         vault.deposit{value: 10 ether}();
         
 
-        vm.expectRevert(Vault.Vault__TransferFailed.selector);
+        vm.expectRevert(Vault.Vault__RedeemFailed.selector);
         transferFail.tryRedeem(5 ether);
     }
 
