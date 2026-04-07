@@ -52,7 +52,11 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     function balanceOf(address _user) public view override returns (uint256) {
-        return super.balanceOf(_user) * calculateUserAccumulatedInterestSinceLastUpdate(_user) / PRECISION_FACTOR;
+        uint256 currentPrincipalBalance = super.balanceOf(_user);
+        if(currentPrincipalBalance == 0) {
+            return 0;
+        }
+        return (currentPrincipalBalance * calculateUserAccumulatedInterestSinceLastUpdate(_user)) / PRECISION_FACTOR;
     }
 
     function transfer(address _recipient, uint256 _amount) public override returns (bool) {
