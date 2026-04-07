@@ -1,45 +1,47 @@
 // SPDX-License-Identifier: MIT
-
-
 pragma solidity ^0.8.24;
 
-import {IRebaseToken} from "./interfaces/IRebaseToken.sol";
+import "./interfaces/IRebaseToken.sol";
 
 contract Vault {
-    error Vault__TransferFailed();
+    IRebaseToken public immutable i_rebaseToken;
 
-    IRebaseToken private immutable i_rebaseToken;
+    event Deposit(address indexed user, uint256 amount);
+    event Redeem(address indexed user, uint256 amount);
 
-    event Deposited(address indexed user, uint256 amount);
-    event Reedemed(address indexed user, uint256 amount);
-
+    error Vault__RedeemFailed();
 
     constructor(IRebaseToken _rebaseToken) {
         i_rebaseToken = _rebaseToken;
     }
 
+    // allows the contract to receive rewards
+    receive() external payable {}
 
     function deposit() external payable {
-        uint256 interestRate = i_rebaseToken.getInterestRate();
-        i_rebaseToken.mint(msg.sender, msg.value, interestRate);
-        emit Deposited(msg.sender, msg.value);
-
+        i_rebaseToken.mint(msg.sender, msg.value, i_rebaseToken.getInterestRate());
+        emit Deposit(msg.sender, msg.value);
     }
 
-
+    /**
+     * @dev redeems rebase token for the underlying asset
+     * @param _amount the amount being redeemed
+     *
+     */
     function redeem(uint256 _amount) external {
-        i_rebaseToken.burn(msg.sender, _amount);
-        (bool success, ) = payable(msg.sender).call{value: _amount}("");
-        if(!success) {
-            revert Vault__TransferFailed();
+        if (_amount == type(uint256).max) {
+            _amount = i_rebaseToken.balanceOf(msg.sender);
         }
-        emit Reedemed(msg.sender, _amount);
+        i_rebaseToken.burn(msg.sender, _amount);
+        // executes redeem of the underlying asset
+        (bool success,) = payable(msg.sender).call{value: _amount}("");
+        if (!success) {
+            revert Vault__RedeemFailed();
+        }
+        emit Redeem(msg.sender, _amount);
     }
 
-
-    function getRebaseTokenAddress() public view returns (address) {
+    function getRebaseTokenAddress() external view returns (address) {
         return address(i_rebaseToken);
     }
-
-    receive() external payable {}
 }
