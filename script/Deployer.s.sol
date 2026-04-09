@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.24;
-import {Script} from "forge-std/src/Script.sol";
+import {Script} from "forge-std/Script.sol";
 import {Vault} from "../src/Vault.sol";
 import {IRebaseToken} from "../src/interfaces/IRebaseToken.sol";
 import {RebaseToken} from "../src/RebaseToken.sol";
@@ -10,12 +10,13 @@ import {IERC20} from "@ccip/vendor/openzeppelin-solidity/v4.8.3/contracts/token/
 import {CCIPLocalSimulatorFork} from "@chainlink/local/src/ccip/CCIPLocalSimulatorFork.sol";
 import {Register} from "@chainlink/local/src/ccip/Register.sol";
 import {RegistryModuleOwnerCustom} from "@ccip/ccip/tokenAdminRegistry/RegistryModuleOwnerCustom.sol";
+import {TokenAdminRegistry} from "@ccip/ccip/tokenAdminRegistry/TokenAdminRegistry.sol";
 
 contract TokenAndPoolDeployer is Script{
     
     function run() public returns(RebaseToken token, RebaseTokenPool pool){
         CCIPLocalSimulatorFork ccipLocalSimulatorFork = new CCIPLocalSimulatorFork();
-        Register.NetworkDetails networkDetails = ccipLocalSimulatorFork.getNetworkDetails(block.chainid);
+        Register.NetworkDetails memory networkDetails = ccipLocalSimulatorFork.getNetworkDetails(block.chainid);
 
         vm.startBroadcast();
         token = new RebaseToken();
@@ -30,7 +31,7 @@ contract TokenAndPoolDeployer is Script{
 }
 
 
-contract VaultDeployer is Script{
+contract VaultDeployer is Script {
 
     function run(address _rebaseToken) public returns(Vault vault){
         vm.startBroadcast();
