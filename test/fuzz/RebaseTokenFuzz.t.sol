@@ -79,27 +79,27 @@ contract RebaseTokenFuzz is Test {
         amount = bound(amount, 1e5 + 1e5, type(uint96).max);
         amountToSend = bound(amountToSend, 1e5, amount - 1e5);
 
-
         vm.deal(user, amount);
         vm.prank(user);
         vault.deposit{value: amount}();
 
-
         address user2 = makeAddr("user2");
-        uint256 userBalance = token.balanceOf(user);
-        uint256 user2Balanace = token.balanceOf(user2);
-        assertEq(userBalance, amount);
-        assertEq(user2Balanace, 0);
+        assertEq(token.balanceOf(user), amount);
+        assertEq(token.balanceOf(user2), 0);
 
         vm.prank(owner);
-        token.setInterestRate(4e10);
+        token.announceInterestRate(4e10);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(owner);
+        token.executeInterestRate();
+
+        uint256 userBalanceBeforeTransfer = token.balanceOf(user);
 
         vm.prank(user);
         token.transfer(user2, amountToSend);
-        uint256 userBalanceAfterTransfer = token.balanceOf(user);
-        uint256 user2BalanceAfterTransfer = token.balanceOf(user2);
-        assertEq(userBalanceAfterTransfer, userBalance - amountToSend);
-        assertEq(user2BalanceAfterTransfer, amountToSend);
+
+        assertEq(token.balanceOf(user), userBalanceBeforeTransfer - amountToSend);
+        assertEq(token.balanceOf(user2), amountToSend);
 
         assertEq(token.getUserInterestRate(user), 5e10);
         assertEq(token.getUserInterestRate(user2), 5e10);
