@@ -27,7 +27,9 @@ contract RebaseTokenTest is Test {
 
     function testGlobalInterestRateCanOnlyDecrease() public {
         vm.prank(owner);
-        token.setInterestRate(5e9); // default value was 5e10;
+        token.announceInterestRate(5e9); // default value was 5e10;
+        vm.warp(block.timestamp + 48 hours);
+        token.executeInterestRate();
     }
 
     function testSetInterestFunctionRevertIfRateIncreased() public {
@@ -39,14 +41,15 @@ contract RebaseTokenTest is Test {
                 5e11   
                 )
             );
-        token.setInterestRate(5e11); // default value was 5e10;
+        token.announceInterestRate(5e11); // default value was 5e10;
     }
 
     function testSetInterestEmitEvent() public {
+        vm.warp(0);
         vm.prank(owner);
         vm.expectEmit(false, false, false, true);
-        emit RebaseToken.InterestRateSet(5e9);
-        token.setInterestRate(5e9);
+        emit RebaseToken.InterestRateAnnounced(5e9 , 48 hours);
+        token.announceInterestRate(5e9);
     }
 
 
