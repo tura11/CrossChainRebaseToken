@@ -22,4 +22,6 @@ contract ConfigurePool is Script {
         TokenPool(localPool).applyChainUpdates(chainsToAdd);
         vm.stopBroadcast();
     }
+
+    function test()public{}
 }
