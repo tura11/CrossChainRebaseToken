@@ -48,9 +48,60 @@ contract VaultTest is Test {
         transferFail.tryRedeem(5 ether);
     }
 
+    function testRedeemWithInterestAccrued() public {
+        vm.startPrank(user);
+        vault.deposit{value: 10 ether}();
+        vm.stopPrank();
+
+        vm.deal(address(vault), 100 ether); // pokrycie na odsetki
+
+        vm.startPrank(user);
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 balanceWithInterest = token.balanceOf(user);
+        uint256 ethBefore = user.balance;
+
+        vault.redeem(balanceWithInterest);
+
+        assertEq(token.balanceOf(user), 0);
+        assertGt(user.balance, ethBefore);
+        vm.stopPrank();
+    }
+
+    function testRedeemMaxAmount() public {
+        vm.startPrank(user);
+        vault.deposit{value: 10 ether}();
+        vm.stopPrank();
+
+        vm.deal(address(vault), 100 ether); // pokrycie na odsetki
+
+        vm.startPrank(user);
+        vm.warp(block.timestamp + 365 days);
+
+        vault.redeem(type(uint256).max);
+
+        assertEq(token.balanceOf(user), 0);
+        vm.stopPrank();
+    }
+
+    function testRedeemEmitsEvent() public {
+        vm.startPrank(user);
+        vault.deposit{value: 10 ether}();
+        vm.expectEmit(true, false, false, true);
+        emit Vault.Redeem(user, 5 ether);
+        vault.redeem(5 ether);
+    }
+
+    function testVaultCanReceiveEth() public {
+        (bool ok,) = payable(address(vault)).call{value: 1 ether}("");
+        assertTrue(ok);
+        assertEq(address(vault).balance, 1 ether);
+    }
+
     function testGetRebaseToken() public {
         assertEq(vault.getRebaseTokenAddress(), address(token));
     }
+
 }
 
 
