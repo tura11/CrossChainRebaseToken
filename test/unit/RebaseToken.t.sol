@@ -21,7 +21,7 @@ contract RebaseTokenTest is Test {
     }
 
     ////////////////////////////////////////////////
-    ///         TEST SET INTEREST                ///
+    ///         TEST  INTEREST                   ///
     ///////////////////////////////////////////////
 
 
@@ -51,6 +51,151 @@ contract RebaseTokenTest is Test {
         emit RebaseToken.InterestRateAnnounced(5e9 , 48 hours);
         token.announceInterestRate(5e9);
     }
+
+    function testAnnounceRevertsIfNotOwner() public {
+    vm.prank(user);
+    vm.expectRevert();
+    token.announceInterestRate(5e9);
+}
+
+    function testAnnounceRevertsIfRateNotDecreasing() public {
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RebaseToken.RebaseToken__InterestRateCanOnlyDecrease.selector,
+                5e10, 5e11
+            )
+        );
+        token.announceInterestRate(5e11);
+    }
+
+    function testAnnounceSetsPendingState() public {
+        vm.warp(1000);
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+
+        (uint256 rate, uint256 validAt) = token.getPendingInterestRate();
+        assertEq(rate, 5e9);
+        assertEq(validAt, 1000 + 48 hours);
+    }
+
+    function testAnnounceEmitsEvent() public {
+        vm.warp(0);
+        vm.prank(owner);
+        vm.expectEmit(false, false, false, true);
+        emit RebaseToken.InterestRateAnnounced(5e9, 48 hours);
+        token.announceInterestRate(5e9);
+    }
+
+    function testExecuteRevertsIfNotOwner() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+        vm.warp(block.timestamp + 48 hours);
+
+        vm.prank(user);
+        vm.expectRevert();
+        token.executeInterestRate();
+    }
+
+    function testExecuteRevertsIfNoPending() public {
+        vm.prank(owner);
+        vm.expectRevert(RebaseToken.RebaseToken__NoAnnouncementPending.selector);
+        token.executeInterestRate();
+    }
+
+    function testExecuteRevertsIfTooEarly() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+
+        uint256 validAt = block.timestamp + 48 hours;
+        vm.warp(block.timestamp + 48 hours - 1);
+
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RebaseToken.RebaseToken__TimelockNotExpired.selector,
+                validAt
+            )
+        );
+        token.executeInterestRate();
+    }
+
+    function testExecuteSetsNewRate() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(owner);
+        token.executeInterestRate();
+
+        assertEq(token.getInterestRate(), 5e9);
+    }
+
+    function testExecuteClearsPending() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(owner);
+        token.executeInterestRate();
+
+        (uint256 rate, uint256 validAt) = token.getPendingInterestRate();
+        assertEq(rate, 0);
+        assertEq(validAt, 0);
+    }
+
+    function testExecuteEmitsEvent() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+        vm.warp(block.timestamp + 48 hours);
+
+        vm.prank(owner);
+        vm.expectEmit(false, false, false, true);
+        emit RebaseToken.InterestRateSet(5e9);
+        token.executeInterestRate();
+    }
+
+    function testCancelRevertsIfNotOwner() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+
+        vm.prank(user);
+        vm.expectRevert();
+        token.cancelInterestRateAnnouncement();
+    }
+
+    function testCancelClearsPending() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+        vm.prank(owner);
+        token.cancelInterestRateAnnouncement();
+
+        (uint256 rate, uint256 validAt) = token.getPendingInterestRate();
+        assertEq(rate, 0);
+        assertEq(validAt, 0);
+    }
+
+    function testCancelEmitsEvent() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+
+        vm.prank(owner);
+        vm.expectEmit(false, false, false, false);
+        emit RebaseToken.InterestRateAnnouncementCancelled();
+        token.cancelInterestRateAnnouncement();
+    }
+
+    function testCancelPreventsExecute() public {
+        vm.prank(owner);
+        token.announceInterestRate(5e9);
+        vm.prank(owner);
+        token.cancelInterestRateAnnouncement();
+
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(owner);
+        vm.expectRevert(RebaseToken.RebaseToken__NoAnnouncementPending.selector);
+        token.executeInterestRate();
+    }
+
+    
 
 
 
