@@ -28,6 +28,8 @@ contract TokenAndPoolDeployer is Script{
         vm.stopBroadcast();
     }
 
+    function test()public{}
+
 }
 
 
@@ -39,4 +41,6 @@ contract VaultDeployer is Script {
         IRebaseToken(_rebaseToken).grantMintAndBurnRole(address(vault));
         vm.stopBroadcast();
     }
+
+    function test()public{}
 }
