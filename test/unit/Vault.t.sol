@@ -53,7 +53,7 @@ contract VaultTest is Test {
         vault.deposit{value: 10 ether}();
         vm.stopPrank();
 
-        vm.deal(address(vault), 100 ether); // pokrycie na odsetki
+        vm.deal(address(vault), 100 ether); 
 
         vm.startPrank(user);
         vm.warp(block.timestamp + 365 days);
@@ -73,7 +73,7 @@ contract VaultTest is Test {
         vault.deposit{value: 10 ether}();
         vm.stopPrank();
 
-        vm.deal(address(vault), 100 ether); // pokrycie na odsetki
+        vm.deal(address(vault), 100 ether); 
 
         vm.startPrank(user);
         vm.warp(block.timestamp + 365 days);
