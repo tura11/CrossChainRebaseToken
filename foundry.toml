@@ -6,3 +6,6 @@ libs = ["lib"]
 [rpc_endpoints]
 eth-sepolia = "${SEPOLIA_RPC_URL}"
 arb-sepolia = "${ARB_SEPOLIA_RPC_URL}"
+
+[profile.solx]
+solc = "/usr/local/bin/solx"
