@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity ^0.8.24;
 
 import {ConfirmedOwner} from "../shared/access/ConfirmedOwner.sol";
 import {OCR2Abstract} from "./ocr/OCR2Abstract.sol";

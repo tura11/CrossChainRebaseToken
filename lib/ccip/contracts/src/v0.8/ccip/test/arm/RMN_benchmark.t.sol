@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.24;
+pragma solidity ^0.8.24;
 
 import {GLOBAL_CURSE_SUBJECT, OWNER_CURSE_VOTE_ADDR, RMN} from "../../RMN.sol";
 import {RMNSetup, makeCursesHash, makeSubjects} from "./RMNSetup.t.sol";

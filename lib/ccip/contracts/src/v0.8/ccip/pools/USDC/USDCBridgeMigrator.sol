@@ -1,4 +1,4 @@
-pragma solidity ^0.8.24;
+pragma solidity ^^0.8.24;
 
 import {OwnerIsCreator} from "../../../shared/access/OwnerIsCreator.sol";
 import {IBurnMintERC20} from "../../../shared/token/ERC20/IBurnMintERC20.sol";
