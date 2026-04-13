@@ -2,13 +2,11 @@
 
 pragma solidity ^0.8.24;
 
-
 import {Test} from "forge-std/Test.sol";
 import {RebaseToken} from "../../src/RebaseToken.sol";
 
-
 contract HandlerRebaseToken is Test {
-    RebaseToken token; 
+    RebaseToken token;
     address[] users = new address[](3);
     address owner;
     uint256 public totalMinted;
@@ -24,8 +22,6 @@ contract HandlerRebaseToken is Test {
         token.grantMintAndBurnRole(address(this));
     }
 
-
-
     function mint(uint256 amount, uint256 actorIndex) public {
         address user = users[bound(actorIndex, 0, users.length - 1)];
         uint256 interestRate = token.getInterestRate();
@@ -34,25 +30,21 @@ contract HandlerRebaseToken is Test {
         totalMinted += amount;
     }
 
-
-    function  burn(uint256 amount, uint256 actorIndex) public {
+    function burn(uint256 amount, uint256 actorIndex) public {
         address user = users[bound(actorIndex, 0, users.length - 1)];
         uint256 maxAmount = token.balanceOf(user);
-        if(amount < 1e5) return;
+        if (amount < 1e5) return;
         amount = bound(amount, 1e5, maxAmount);
         token.burn(user, amount);
         totalBurned += amount;
     }
-
 
     function transfer(address recipient, uint256 amount, uint256 actorIndex) public {
         address user = users[bound(actorIndex, 0, users.length - 1)];
         uint256 maxAmount = token.balanceOf(user);
         amount = bound(amount, 1e5, maxAmount);
         token.transfer(recipient, amount);
-        
     }
-
 
     function transferFrom(address sender, address recipient, uint256 amount, uint256 actorIndex) public {
         address user = users[bound(actorIndex, 0, users.length - 1)];
@@ -63,12 +55,10 @@ contract HandlerRebaseToken is Test {
         token.transferFrom(sender, recipient, amount);
     }
 
-
     function warp(uint256 time) public {
-        time = bound(time,0, 365 days);
+        time = bound(time, 0, 365 days);
         vm.warp(block.timestamp + time);
     }
 
-    function test() public{}
-  
+    function test() public {}
 }

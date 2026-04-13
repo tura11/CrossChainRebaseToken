@@ -7,14 +7,12 @@ import {RebaseToken} from "../../src/RebaseToken.sol";
 import {Vault} from "../../src/Vault.sol";
 import {IRebaseToken} from "../../src/interfaces/IRebaseToken.sol";
 
-
 contract Handler is Test {
     RebaseToken token;
     Vault vault;
     uint256 public totalMinted;
     uint256 public totalBurned;
     address[] public actors = new address[](3);
-
 
     constructor(address _token, address _vault) {
         token = RebaseToken(_token);
@@ -23,7 +21,6 @@ contract Handler is Test {
         actors[1] = makeAddr("actor1");
         actors[2] = makeAddr("actor2");
     }
-
 
     function deposit(uint256 actorIndex, uint256 amount) public {
         address actor = actors[bound(actorIndex, 0, actors.length - 1)];
@@ -34,11 +31,10 @@ contract Handler is Test {
         totalMinted += amount;
     }
 
-
     function redeem(uint256 actorIndex, uint256 amount) public {
         address actor = actors[bound(actorIndex, 0, actors.length - 1)];
         uint256 maxAmountToWithdraw = token.balanceOf(actor);
-        if(maxAmountToWithdraw < 1e5) return;
+        if (maxAmountToWithdraw < 1e5) return;
         amount = bound(amount, 1e5, maxAmountToWithdraw);
         vm.prank(actor);
         vault.redeem(amount);

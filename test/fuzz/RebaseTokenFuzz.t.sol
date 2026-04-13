@@ -7,7 +7,6 @@ import {RebaseToken} from "../../src/RebaseToken.sol";
 import {Vault} from "../../src/Vault.sol";
 import {IRebaseToken} from "../../src/interfaces/IRebaseToken.sol";
 
-
 contract RebaseTokenFuzz is Test {
     RebaseToken token;
     Vault vault;
@@ -15,18 +14,17 @@ contract RebaseTokenFuzz is Test {
     address public owner = makeAddr("owner");
     address public user = makeAddr("user");
 
-
     function setUp() public {
         vm.startPrank(owner);
         token = new RebaseToken();
         vault = new Vault(IRebaseToken(address(token)));
         token.grantMintAndBurnRole(address(vault));
-        (bool success, ) = payable(address(vault)).call{value: 1e18}("");
+        (bool success,) = payable(address(vault)).call{value: 1e18}("");
         vm.stopPrank();
     }
 
     function addRewardsToVault(uint256 rewardAmount) public {
-        (bool success, ) = payable(address(vault)).call{value: rewardAmount}("");
+        (bool success,) = payable(address(vault)).call{value: rewardAmount}("");
     }
 
     function testFuzzDepositLinear(uint256 amount) public {
@@ -48,10 +46,8 @@ contract RebaseTokenFuzz is Test {
         uint256 endBalance = token.balanceOf(user);
         assertGt(endBalance, middleBalance);
 
-
         vm.stopPrank();
     }
-
 
     function testRedeemAfterTimePassed(uint256 amount, uint256 time) public {
         amount = bound(amount, 1e5, type(uint96).max);
@@ -61,7 +57,6 @@ contract RebaseTokenFuzz is Test {
         vm.deal(user, amount);
         vault.deposit{value: amount}();
         vm.stopPrank();
-        
 
         vm.warp(block.timestamp + time);
 
@@ -104,6 +99,4 @@ contract RebaseTokenFuzz is Test {
         assertEq(token.getUserInterestRate(user), 5e10);
         assertEq(token.getUserInterestRate(user2), 5e10);
     }
-
-
 }

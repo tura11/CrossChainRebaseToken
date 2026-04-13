@@ -12,15 +12,16 @@ import {Register} from "@chainlink/local/src/ccip/Register.sol";
 import {RegistryModuleOwnerCustom} from "@ccip/ccip/tokenAdminRegistry/RegistryModuleOwnerCustom.sol";
 import {TokenAdminRegistry} from "@ccip/ccip/tokenAdminRegistry/TokenAdminRegistry.sol";
 
-contract TokenAndPoolDeployer is Script{
-    
-    function run() public returns(RebaseToken token, RebaseTokenPool pool){
+contract TokenAndPoolDeployer is Script {
+    function run() public returns (RebaseToken token, RebaseTokenPool pool) {
         CCIPLocalSimulatorFork ccipLocalSimulatorFork = new CCIPLocalSimulatorFork();
         Register.NetworkDetails memory networkDetails = ccipLocalSimulatorFork.getNetworkDetails(block.chainid);
 
         vm.startBroadcast();
         token = new RebaseToken();
-        pool = new RebaseTokenPool(IERC20(address(token)), new address[](0), networkDetails.rmnProxyAddress, networkDetails.routerAddress);
+        pool = new RebaseTokenPool(
+            IERC20(address(token)), new address[](0), networkDetails.rmnProxyAddress, networkDetails.routerAddress
+        );
         token.grantMintAndBurnRole(address(pool));
         RegistryModuleOwnerCustom(networkDetails.registryModuleOwnerCustomAddress).registerAdminViaOwner(address(token));
         TokenAdminRegistry(networkDetails.tokenAdminRegistryAddress).acceptAdminRole(address(token));
@@ -28,19 +29,16 @@ contract TokenAndPoolDeployer is Script{
         vm.stopBroadcast();
     }
 
-    function test()public{}
-
+    function test() public {}
 }
 
-
 contract VaultDeployer is Script {
-
-    function run(address _rebaseToken) public returns(Vault vault){
+    function run(address _rebaseToken) public returns (Vault vault) {
         vm.startBroadcast();
         vault = new Vault(IRebaseToken(_rebaseToken));
         IRebaseToken(_rebaseToken).grantMintAndBurnRole(address(vault));
         vm.stopBroadcast();
     }
 
-    function test()public{}
+    function test() public {}
 }

@@ -9,7 +9,6 @@ import {RebaseToken} from "../../src/RebaseToken.sol";
 import {Vault} from "../../src/Vault.sol";
 import {IRebaseToken} from "../../src/interfaces/IRebaseToken.sol";
 
-
 contract RebaseTokenInvariant is StdInvariant, Test {
     RebaseToken token;
     Vault vault;

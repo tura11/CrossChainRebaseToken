@@ -6,7 +6,6 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract RebaseToken is ERC20, Ownable, AccessControl {
-
     // ── Errors ────────────────────────────────────────────────────────────────
     error RebaseToken__InterestRateCanOnlyDecrease(uint256 oldInterest, uint256 newInterest);
     error RebaseToken__NoAnnouncementPending();
@@ -15,13 +14,13 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
 
     // ── Constants ─────────────────────────────────────────────────────────────
     bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
-    uint256 private constant PRECISION_FACTOR   = 1e18;
-    uint256 private constant TIMELOCK_DURATION  = 48 hours;
+    uint256 private constant PRECISION_FACTOR = 1e18;
+    uint256 private constant TIMELOCK_DURATION = 48 hours;
 
     // ── State ─────────────────────────────────────────────────────────────────
-    uint256 private s_interestRate                  = 5e10;
-    uint256 private s_pendingInterestRate;          // rate zapowiedziany
-    uint256 private s_pendingInterestRateValidAt;   // kiedy można wykonać
+    uint256 private s_interestRate = 5e10;
+    uint256 private s_pendingInterestRate; // rate zapowiedziany
+    uint256 private s_pendingInterestRateValidAt; // kiedy można wykonać
 
     mapping(address => uint256) private s_userInterestRate;
     mapping(address => uint256) private s_userLastUpdatedTimeStamp;
@@ -33,47 +32,41 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
 
     constructor() ERC20("RebaseToken", "RBT") Ownable(msg.sender) {}
 
-
     function announceInterestRate(uint256 _newInterestRate) external onlyOwner {
         if (_newInterestRate >= s_interestRate) {
             revert RebaseToken__InterestRateCanOnlyDecrease(s_interestRate, _newInterestRate);
         }
 
         uint256 validAt = block.timestamp + TIMELOCK_DURATION;
-        s_pendingInterestRate        = _newInterestRate;
+        s_pendingInterestRate = _newInterestRate;
         s_pendingInterestRateValidAt = validAt;
 
         emit InterestRateAnnounced(_newInterestRate, validAt);
     }
 
-
     function executeInterestRate() external onlyOwner {
-   
         if (s_pendingInterestRateValidAt == 0) {
             revert RebaseToken__NoAnnouncementPending();
         }
-      
+
         if (block.timestamp < s_pendingInterestRateValidAt) {
             revert RebaseToken__TimelockNotExpired(s_pendingInterestRateValidAt);
         }
 
         uint256 newRate = s_pendingInterestRate;
 
-      
-        s_pendingInterestRate  = 0;
+        s_pendingInterestRate = 0;
         s_pendingInterestRateValidAt = 0;
 
         s_interestRate = newRate;
         emit InterestRateSet(newRate);
     }
 
-
     function cancelInterestRateAnnouncement() external onlyOwner {
-        s_pendingInterestRate        = 0;
+        s_pendingInterestRate = 0;
         s_pendingInterestRateValidAt = 0;
         emit InterestRateAnnouncementCancelled();
     }
-
 
     function grantMintAndBurnRole(address _account) external onlyOwner {
         _grantRole(MINT_AND_BURN_ROLE, _account);
@@ -148,8 +141,8 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
 
     function _mintAccruedInterest(address _user) internal {
         uint256 previousPrincipal = super.balanceOf(_user);
-        uint256 currentBalance    = balanceOf(_user);
-        uint256 balanceIncrease   = currentBalance - previousPrincipal;
+        uint256 currentBalance = balanceOf(_user);
+        uint256 balanceIncrease = currentBalance - previousPrincipal;
         s_userLastUpdatedTimeStamp[_user] = block.timestamp;
         _mint(_user, balanceIncrease);
     }

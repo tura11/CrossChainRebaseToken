@@ -8,7 +8,7 @@ import {Vault} from "../../src/Vault.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract VaultTest is Test {
-    RebaseToken token; 
+    RebaseToken token;
     Vault vault;
     address user;
 
@@ -19,8 +19,6 @@ contract VaultTest is Test {
         user = makeAddr("user");
         vm.deal(user, 100 ether);
     }
-
-
 
     function testDeposit() public {
         vm.prank(user);
@@ -37,12 +35,10 @@ contract VaultTest is Test {
 
     function testRedeemFails() public {
         TransferFail transferFail = new TransferFail(payable(address(vault)));
-        
-    
+
         vm.deal(address(transferFail), 10 ether);
         vm.prank(address(transferFail));
         vault.deposit{value: 10 ether}();
-        
 
         vm.expectRevert(Vault.Vault__RedeemFailed.selector);
         transferFail.tryRedeem(5 ether);
@@ -53,7 +49,7 @@ contract VaultTest is Test {
         vault.deposit{value: 10 ether}();
         vm.stopPrank();
 
-        vm.deal(address(vault), 100 ether); 
+        vm.deal(address(vault), 100 ether);
 
         vm.startPrank(user);
         vm.warp(block.timestamp + 365 days);
@@ -73,7 +69,7 @@ contract VaultTest is Test {
         vault.deposit{value: 10 ether}();
         vm.stopPrank();
 
-        vm.deal(address(vault), 100 ether); 
+        vm.deal(address(vault), 100 ether);
 
         vm.startPrank(user);
         vm.warp(block.timestamp + 365 days);
@@ -101,10 +97,7 @@ contract VaultTest is Test {
     function testGetRebaseToken() public {
         assertEq(vault.getRebaseTokenAddress(), address(token));
     }
-
 }
-
-
 
 contract TransferFail {
     Vault vault;
@@ -122,5 +115,4 @@ contract TransferFail {
     }
 
     function test() public {}
-
 }
